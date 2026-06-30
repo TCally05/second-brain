@@ -52,6 +52,10 @@ def build_index(vault_root: Path, db_path: Path) -> IndexResult:
                         json.dumps(note.tags),
                     ),
                 )
+                conn.execute(
+                    "INSERT INTO notes_fts (id, title, body) VALUES (?, ?, ?)",
+                    (note.id, note.title, note.body),
+                )
             for note in notes:
                 for target in parse_wikilinks(note.body):
                     target_id = _resolve_target(target, id_to_note, slug_to_id)

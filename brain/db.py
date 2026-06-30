@@ -17,6 +17,8 @@ CREATE TABLE links (
     target_id TEXT REFERENCES notes(id),
     PRIMARY KEY (source_id, target)
 );
+
+CREATE VIRTUAL TABLE notes_fts USING fts5(id UNINDEXED, title, body);
 """
 
 
@@ -31,5 +33,9 @@ def reset_schema(conn: sqlite3.Connection) -> None:
     """Drop and recreate every table. The index is fully derived from the
     markdown corpus, so there's no migration story to preserve - each
     `brain index` run starts from a clean schema."""
-    conn.executescript("DROP TABLE IF EXISTS links; DROP TABLE IF EXISTS notes;")
+    conn.executescript(
+        "DROP TABLE IF EXISTS notes_fts;"
+        "DROP TABLE IF EXISTS links;"
+        "DROP TABLE IF EXISTS notes;"
+    )
     conn.executescript(SCHEMA)
