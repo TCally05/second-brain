@@ -4,9 +4,11 @@ import json
 import sqlite3
 from pathlib import Path
 
-from flask import Flask, abort, render_template, request
+from flask import Flask, abort, redirect, render_template, request, url_for
 
 from brain.backlinks import get_backlinks
+from brain.capture import create_note, update_note
+from brain.indexer import build_index
 from brain.note import Note
 from brain.orphans import get_orphans
 from brain.render import render_body
@@ -39,6 +41,63 @@ def create_app(vault_root: Path) -> Flask:
         if q:
             results, error = query(search_notes, db_path, q)
         return render_template("search_results.html", query=q, results=results, error=error)
+
+    @app.route("/notes/new", methods=["GET", "POST"])
+    def new_note():
+        if request.method == "GET":
+            return render_template(
+                "note_form.html", heading="New note", note_id=None,
+                title="", tags="", body="", error=None,
+            )
+
+        title = request.form.get("title", "")
+        tags_raw = request.form.get("tags", "")
+        body = request.form.get("body", "")
+
+        try:
+            note_path = create_note(title, vault_root, tags=_parse_tags(tags_raw), body=body)
+        except ValueError as exc:
+            return render_template(
+                "note_form.html", heading="New note", note_id=None,
+                title=title, tags=tags_raw, body=body, error=str(exc),
+            ), 400
+
+        build_index(vault_root, db_path)
+        new_id = note_path.stem.split("-", 1)[0]
+        return redirect(url_for("note_detail", note_id=new_id))
+
+    @app.route("/notes/<note_id>/edit", methods=["GET", "POST"])
+    def edit_note(note_id):
+        record, error = query(_get_note_record, db_path, note_id)
+        if error:
+            return render_template("error.html", message=error), 500
+        if record is None:
+            abort(404)
+
+        db_title, path, _tags_json, _resolved = record
+        note_path = vault_root / path
+
+        if request.method == "GET":
+            note = Note.from_file(note_path)
+            return render_template(
+                "note_form.html", heading=f"Edit: {db_title}", note_id=note_id,
+                title=note.title, tags=", ".join(note.tags), body=note.body, error=None,
+            )
+
+        title = request.form.get("title", "")
+        tags_raw = request.form.get("tags", "")
+        body = request.form.get("body", "")
+
+        try:
+            update_note(note_path, note_id, title, _parse_tags(tags_raw), body)
+        except ValueError as exc:
+            return render_template(
+                "note_form.html", heading=f"Edit: {db_title}", note_id=note_id,
+                title=title, tags=tags_raw, body=body, error=str(exc),
+            ), 400
+
+        build_index(vault_root, db_path)
+        return redirect(url_for("note_detail", note_id=note_id))
 
     @app.route("/notes/<note_id>")
     def note_detail(note_id):
@@ -75,6 +134,10 @@ def create_app(vault_root: Path) -> Flask:
         return render_template("resurface.html", notes=notes, error=error, count=count)
 
     return app
+
+
+def _parse_tags(raw: str) -> list[str]:
+    return [t.strip() for t in raw.split(",") if t.strip()]
 
 
 def _list_notes(db_path: Path) -> list[tuple[str, str, list[str]]]:

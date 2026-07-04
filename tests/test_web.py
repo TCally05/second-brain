@@ -121,3 +121,101 @@ def test_resurface_page_lists_notes(tmp_path):
 
     assert resp.status_code == 200
     assert b"Some note" in resp.data
+
+
+def test_new_note_get_shows_empty_form(tmp_path):
+    vault = make_vault(tmp_path)
+    client = client_for(vault)
+
+    resp = client.get("/notes/new")
+
+    assert resp.status_code == 200
+    assert b"New note" in resp.data
+
+
+def test_new_note_post_creates_note_and_is_findable_without_manual_reindex(tmp_path):
+    vault = make_vault(tmp_path)
+    client = client_for(vault)
+
+    resp = client.post(
+        "/notes/new",
+        data={"title": "Created via UI", "tags": "web, ui", "body": "Some body text."},
+    )
+
+    assert resp.status_code == 302
+    created = list((vault / "inbox").glob("*.md"))
+    assert len(created) == 1
+
+    home_resp = client.get("/")
+    assert b"Created via UI" in home_resp.data
+
+    search_resp = client.get("/search?q=body")
+    assert b"Created via UI" in search_resp.data
+
+
+def test_new_note_post_blank_title_shows_error_and_no_file_created(tmp_path):
+    vault = make_vault(tmp_path)
+    client = client_for(vault)
+
+    resp = client.post("/notes/new", data={"title": "   ", "tags": "", "body": ""})
+
+    assert resp.status_code == 400
+    assert b"title must not be empty" in resp.data
+    assert list((vault / "inbox").glob("*.md")) == []
+
+
+def test_edit_note_get_shows_prefilled_form(tmp_path):
+    vault = make_vault(tmp_path)
+    write_note(vault, "202601151230", "Original title", "Original body.")
+    client = client_for(vault)
+
+    resp = client.get("/notes/202601151230/edit")
+
+    assert resp.status_code == 200
+    assert b"Original title" in resp.data
+    assert b"Original body." in resp.data
+
+
+def test_edit_note_unknown_id_returns_404(tmp_path):
+    vault = make_vault(tmp_path)
+    client = client_for(vault)
+
+    resp = client.get("/notes/999999999999/edit")
+
+    assert resp.status_code == 404
+
+
+def test_edit_note_post_updates_content_and_is_reflected_without_manual_reindex(tmp_path):
+    vault = make_vault(tmp_path)
+    note_path = write_note(vault, "202601151230", "Original title", "Original body.")
+    client = client_for(vault)
+
+    resp = client.post(
+        "/notes/202601151230/edit",
+        data={"title": "Updated title", "tags": "edited", "body": "Updated body."},
+    )
+
+    assert resp.status_code == 302
+    assert note_path.exists()  # filename/id are never changed by an edit
+
+    detail_resp = client.get("/notes/202601151230")
+    assert b"Updated title" in detail_resp.data
+    assert b"Updated body." in detail_resp.data
+    assert b"Original body." not in detail_resp.data
+
+
+def test_edit_note_post_blank_title_shows_error_and_does_not_overwrite(tmp_path):
+    vault = make_vault(tmp_path)
+    write_note(vault, "202601151230", "Original title", "Original body.")
+    client = client_for(vault)
+
+    resp = client.post(
+        "/notes/202601151230/edit",
+        data={"title": "   ", "tags": "", "body": "Attempted overwrite."},
+    )
+
+    assert resp.status_code == 400
+    assert b"title must not be empty" in resp.data
+
+    detail_resp = client.get("/notes/202601151230")
+    assert b"Original title" in detail_resp.data

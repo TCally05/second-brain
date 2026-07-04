@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ heading }} — Second Brain{% endblock %}
+{% block content %}
+  <h1>{{ heading }}</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post">
+    <p>
+      <label>Title<br>
+        <input type="text" name="title" value="{{ title }}" style="width:100%">
+      </label>
+    </p>
+    <p>
+      <label>Tags (comma-separated)<br>
+        <input type="text" name="tags" value="{{ tags }}" style="width:100%">
+      </label>
+    </p>
+    <p>
+      <label>Body<br>
+        <textarea name="body" rows="16" style="width:100%; font-family:inherit;">{{ body }}</textarea>
+      </label>
+    </p>
+    <button type="submit">Save</button>
+    {% if note_id %}
+      <a href="{{ url_for('note_detail', note_id=note_id) }}">Cancel</a>
+    {% else %}
+      <a href="{{ url_for('home') }}">Cancel</a>
+    {% endif %}
+  </form>
+{% endblock %}
