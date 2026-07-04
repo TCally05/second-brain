@@ -32,6 +32,24 @@ def test_slug_from_path(stem, expected):
     assert slug_from_path(Path(f"{stem}.md")) == expected
 
 
+def test_build_index_creates_target_id_index_on_links(tmp_path):
+    vault = make_vault(tmp_path)
+    write_note(vault, "inbox", "202601151230-a.md", "202601151230", "Note A")
+
+    db_path = vault / ".brain" / "index.db"
+    build_index(vault, db_path)
+
+    conn = sqlite3.connect(db_path)
+    names = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'links'"
+        )
+    }
+    conn.close()
+    assert "idx_links_target_id" in names
+
+
 def test_build_index_counts_notes_and_skips_no_errors(tmp_path):
     vault = make_vault(tmp_path)
     write_note(vault, "inbox", "202601151230-a.md", "202601151230", "Note A")
@@ -122,6 +140,26 @@ def test_build_index_collects_parse_errors_without_dropping_valid_notes(tmp_path
     count = conn.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
     conn.close()
     assert count == 1
+
+
+def test_build_index_reports_duplicate_ids_without_crashing_or_wiping_others(tmp_path):
+    vault = make_vault(tmp_path)
+    write_note(vault, "inbox", "202601151230-good.md", "202601151230", "Good note")
+    dup_a = write_note(vault, "inbox", "202601151231-dup-a.md", "202601151231", "Dup A")
+    dup_b = write_note(vault, "inbox", "202601151231-dup-b.md", "202601151231", "Dup B")
+
+    db_path = vault / ".brain" / "index.db"
+    result = build_index(vault, db_path)
+
+    assert result.indexed == 1
+    error_paths = {path for path, _ in result.errors}
+    assert error_paths == {dup_a, dup_b}
+    assert all("duplicate id" in msg for _, msg in result.errors)
+
+    conn = sqlite3.connect(db_path)
+    ids = {row[0] for row in conn.execute("SELECT id FROM notes")}
+    conn.close()
+    assert ids == {"202601151230"}
 
 
 def test_build_index_is_a_full_rebuild_not_incremental(tmp_path):

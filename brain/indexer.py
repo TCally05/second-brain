@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,14 +23,32 @@ def slug_from_path(path: Path) -> str | None:
 
 
 def build_index(vault_root: Path, db_path: Path) -> IndexResult:
-    notes: list[Note] = []
+    parsed: list[Note] = []
     errors: list[tuple[Path, str]] = []
 
     for md_path in iter_markdown_files(vault_root):
         try:
-            notes.append(Note.from_file(md_path))
+            parsed.append(Note.from_file(md_path))
         except NoteParseError as exc:
             errors.append((md_path, str(exc)))
+
+    # A shared id would violate notes.id's PRIMARY KEY constraint and crash
+    # the insert below, taking the whole index down with it (reset_schema
+    # has already committed the DROP/CREATE by that point). Catch the
+    # conflict here instead and report it the same way a NoteParseError is
+    # reported, so the rest of the vault still indexes cleanly.
+    notes_by_id: dict[str, list[Note]] = defaultdict(list)
+    for note in parsed:
+        notes_by_id[note.id].append(note)
+
+    notes: list[Note] = []
+    for note_id, group in notes_by_id.items():
+        if len(group) == 1:
+            notes.append(group[0])
+            continue
+        for note in group:
+            others = ", ".join(str(n.path) for n in group if n is not note)
+            errors.append((note.path, f"duplicate id {note_id!r} (also used by {others})"))
 
     id_to_note = {note.id: note for note in notes}
     slug_to_id: dict[str, str] = {}

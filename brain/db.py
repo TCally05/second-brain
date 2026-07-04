@@ -18,6 +18,11 @@ CREATE TABLE links (
     PRIMARY KEY (source_id, target)
 );
 
+-- The primary key above only accelerates lookups by source_id. backlinks,
+-- orphans, and resurface all filter by target_id, which would otherwise be
+-- a full table scan.
+CREATE INDEX idx_links_target_id ON links (target_id);
+
 CREATE VIRTUAL TABLE notes_fts USING fts5(id UNINDEXED, title, body);
 """
 
