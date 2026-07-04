@@ -1,0 +1,105 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+
+from flask import Flask, abort, render_template, request
+
+from brain.backlinks import get_backlinks
+from brain.note import Note
+from brain.orphans import get_orphans
+from brain.render import render_body
+from brain.resurface import get_resurface_candidates
+from brain.search import search_notes
+
+
+def create_app(vault_root: Path) -> Flask:
+    app = Flask(__name__)
+    db_path = vault_root / ".brain" / "index.db"
+
+    def query(fn, *args):
+        """Run a read query against the index, turning a missing/corrupt
+        .brain/index.db into a friendly message instead of a 500 with a
+        raw traceback - the same job _query_index does for the CLI."""
+        try:
+            return fn(*args), None
+        except sqlite3.OperationalError as exc:
+            return None, f"{exc} — have you run `brain index` yet?"
+
+    @app.route("/")
+    def home():
+        notes, error = query(_list_notes, db_path)
+        return render_template("home.html", notes=notes, error=error)
+
+    @app.route("/search")
+    def search():
+        q = request.args.get("q", "").strip()
+        results, error = (None, None)
+        if q:
+            results, error = query(search_notes, db_path, q)
+        return render_template("search_results.html", query=q, results=results, error=error)
+
+    @app.route("/notes/<note_id>")
+    def note_detail(note_id):
+        record, error = query(_get_note_record, db_path, note_id)
+        if error:
+            return render_template("error.html", message=error), 500
+        if record is None:
+            abort(404)
+
+        title, path, tags_json, resolved = record
+        note = Note.from_file(vault_root / path)
+        body_html = render_body(note.body, resolved)
+        backlinks, _ = query(get_backlinks, db_path, note_id)
+
+        return render_template(
+            "note_detail.html",
+            note_id=note_id,
+            title=title,
+            tags=json.loads(tags_json),
+            path=path,
+            body_html=body_html,
+            backlinks=backlinks or [],
+        )
+
+    @app.route("/orphans")
+    def orphans():
+        notes, error = query(get_orphans, db_path)
+        return render_template("orphans.html", notes=notes, error=error)
+
+    @app.route("/resurface")
+    def resurface():
+        count = request.args.get("count", 5, type=int)
+        notes, error = query(get_resurface_candidates, db_path, count)
+        return render_template("resurface.html", notes=notes, error=error, count=count)
+
+    return app
+
+
+def _list_notes(db_path: Path) -> list[tuple[str, str, list[str]]]:
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute("SELECT id, title, tags FROM notes ORDER BY id DESC").fetchall()
+    finally:
+        conn.close()
+    return [(row[0], row[1], json.loads(row[2])) for row in rows]
+
+
+def _get_note_record(db_path: Path, note_id: str):
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT title, path, tags FROM notes WHERE id = ?", (note_id,)
+        ).fetchone()
+        if row is None:
+            return None
+
+        resolved = dict(
+            conn.execute(
+                "SELECT target, target_id FROM links WHERE source_id = ?", (note_id,)
+            ).fetchall()
+        )
+    finally:
+        conn.close()
+    return (row[0], row[1], row[2], resolved)

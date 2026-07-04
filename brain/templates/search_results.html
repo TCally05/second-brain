@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Search{% if query %}: {{ query }}{% endif %} — Second Brain{% endblock %}
+{% block content %}
+  {% if not query %}
+    <p>Type a search term above. Supports FTS5 syntax: <code>"exact phrase"</code>, <code>prefix*</code>, <code>foo AND bar</code>, <code>foo NOT bar</code>.</p>
+  {% elif error %}
+    <p class="error">{{ error }}</p>
+  {% elif not results %}
+    <p>No matches for "{{ query }}".</p>
+  {% else %}
+    <h1>Results for "{{ query }}"</h1>
+    <ul>
+      {% for r in results %}
+        <li>
+          <a href="{{ url_for('note_detail', note_id=r.id) }}">{{ r.title }}</a>
+          <span class="note-id">{{ r.id }}</span>
+          <div>{{ r.snippet }}</div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

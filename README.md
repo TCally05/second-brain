@@ -130,6 +130,21 @@ Control how many notes come back with `-n`/`--count` (default 5):
 $ brain resurface --count 10
 ```
 
+### `brain serve` — browse the vault in a browser
+
+Runs a local, read-only web UI: browse all notes, search, view a note with
+its `[[wikilinks]]` rendered as clickable links, see its backlinks, and
+browse `orphans`/`resurface`. Notes are still only created and edited as
+markdown files — there's no editing through the UI yet.
+
+```
+$ brain serve
+ * Running on http://127.0.0.1:5000
+```
+
+Then open `http://127.0.0.1:5000` in a browser. Change the port with
+`--port`, or pass `--debug` for the Flask auto-reloading dev server.
+
 ## Development
 
 ```

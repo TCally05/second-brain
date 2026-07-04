@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Resurface — Second Brain{% endblock %}
+{% block content %}
+  <h1>Resurface</h1>
+  <p>Random notes to revisit, weighted toward the ones with fewer links.</p>
+  <p><a href="{{ url_for('resurface', count=count) }}">Shuffle again</a></p>
+  {% if error %}
+    <p class="error">{{ error }}</p>
+  {% elif not notes %}
+    <p>No notes to resurface yet.</p>
+  {% else %}
+    <ul>
+      {% for n in notes %}
+        <li>
+          <a href="{{ url_for('note_detail', note_id=n.id) }}">{{ n.title }}</a>
+          <span class="note-id">{{ n.id }}</span>
+          <span class="tag">{{ n.link_count }} links</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

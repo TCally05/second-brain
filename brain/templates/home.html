@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Second Brain{% endblock %}
+{% block content %}
+  {% if error %}
+    <p class="error">{{ error }}</p>
+  {% elif not notes %}
+    <p>No notes yet. Create one with <code>brain new "title"</code>, then run <code>brain index</code>.</p>
+  {% else %}
+    <h1>All notes ({{ notes|length }})</h1>
+    <ul>
+      {% for note_id, title, tags in notes %}
+        <li>
+          <a href="{{ url_for('note_detail', note_id=note_id) }}">{{ title }}</a>
+          <span class="note-id">{{ note_id }}</span>
+          {% for tag in tags %}<span class="tag">{{ tag }}</span>{% endfor %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

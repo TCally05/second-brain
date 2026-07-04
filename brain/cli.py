@@ -11,6 +11,7 @@ from brain.indexer import build_index
 from brain.orphans import get_orphans
 from brain.resurface import get_resurface_candidates
 from brain.search import search_notes
+from brain.web import create_app
 
 _QUERY_FAILED = object()
 
@@ -54,6 +55,12 @@ def main(argv: list[str] | None = None) -> int:
     resurface_parser.add_argument(
         "-n", "--count", type=int, default=5, help="number of notes to show (default: 5)"
     )
+
+    serve_parser = subparsers.add_parser(
+        "serve", help="run a local read-only web UI for browsing the vault"
+    )
+    serve_parser.add_argument("--port", type=int, default=5000, help="port to listen on (default: 5000)")
+    serve_parser.add_argument("--debug", action="store_true", help="run the Flask dev server in debug mode")
 
     args = parser.parse_args(argv)
 
@@ -116,6 +123,9 @@ def main(argv: list[str] | None = None) -> int:
             print("No notes to resurface yet.")
         for note in notes:
             print(f"{note.id}  {note.title}  ({note.path})  [{note.link_count} links]")
+
+    elif args.command == "serve":
+        create_app(vault_root).run(port=args.port, debug=args.debug)
 
     return 0
 

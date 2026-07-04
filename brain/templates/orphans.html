@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Orphans — Second Brain{% endblock %}
+{% block content %}
+  <h1>Orphans</h1>
+  <p>Notes with no incoming or outgoing links - loose ends worth connecting up or archiving.</p>
+  {% if error %}
+    <p class="error">{{ error }}</p>
+  {% elif not notes %}
+    <p>No orphan notes. Everything is connected.</p>
+  {% else %}
+    <ul>
+      {% for n in notes %}
+        <li>
+          <a href="{{ url_for('note_detail', note_id=n.id) }}">{{ n.title }}</a>
+          <span class="note-id">{{ n.id }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

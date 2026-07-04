@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — Second Brain{% endblock %}
+{% block content %}
+  <h1>{{ title }}</h1>
+  <p class="note-id">{{ note_id }} &middot; {{ path }}</p>
+  {% for tag in tags %}<span class="tag">{{ tag }}</span>{% endfor %}
+
+  <div class="note-body">{{ body_html | safe }}</div>
+
+  <h2>Backlinks</h2>
+  {% if backlinks %}
+    <ul>
+      {% for b in backlinks %}
+        <li>
+          <a href="{{ url_for('note_detail', note_id=b.id) }}">{{ b.title }}</a>
+          <span class="note-id">{{ b.id }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>Nothing links here yet.</p>
+  {% endif %}
+{% endblock %}
