@@ -41,3 +41,31 @@ def test_multiple_links_all_rendered():
     out = render_body("[[a]] and [[b]]", {"a": "111111111111", "b": None})
     assert '<a href="/notes/111111111111">a</a>' in out
     assert '<span class="dangling-link">b</span>' in out
+
+
+def test_markdown_link_becomes_anchor():
+    out = render_body("[report.pdf](attachments/202601151230-report.pdf)", {})
+    assert '<a href="attachments/202601151230-report.pdf">report.pdf</a>' in out
+
+
+def test_markdown_link_text_and_url_are_escaped():
+    out = render_body('[<b>x</b>](attachments/a&b.pdf)', {})
+    assert "&lt;b&gt;x&lt;/b&gt;" in out
+    assert "<b>x</b>" not in out
+    assert 'href="attachments/a&amp;b.pdf"' in out
+
+
+def test_markdown_link_javascript_scheme_is_neutralized():
+    # A URL containing parens (e.g. "alert(1)") doesn't match the link
+    # pattern at all - () is the markdown link's own delimiter - so it's
+    # just left as inert escaped text, which is also safe. Use a
+    # paren-free payload to exercise the scheme check itself.
+    out = render_body("[click me](javascript:document.cookie)", {})
+    assert '<span class="dangling-link">click me</span>' in out
+    assert "<a href" not in out
+
+
+def test_wikilink_and_markdown_link_do_not_interfere():
+    out = render_body("See [[202601151230]] and [report.pdf](attachments/x.pdf).", {"202601151230": "202601151230"})
+    assert '<a href="/notes/202601151230">202601151230</a>' in out
+    assert '<a href="attachments/x.pdf">report.pdf</a>' in out

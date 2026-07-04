@@ -3,21 +3,38 @@
 {% block content %}
   <h1>{{ heading }}</h1>
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
-  <form method="post">
+  <form method="post" enctype="multipart/form-data">
     <p>
       <label>Title<br>
         <input type="text" name="title" value="{{ title }}" style="width:100%">
       </label>
     </p>
     <p>
-      <label>Tags (comma-separated)<br>
-        <input type="text" name="tags" value="{{ tags }}" style="width:100%">
-      </label>
+      <label>Tags</label>
+      {% if all_tags %}
+        <div class="tag-checkboxes">
+          {% for t in all_tags %}
+            <label class="tag-checkbox">
+              <input type="checkbox" name="tags" value="{{ t }}" {% if t in selected_tags %}checked{% endif %}>
+              {{ t }}
+            </label>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted">No existing tags yet - add one below.</p>
+      {% endif %}
+      <input type="text" name="new_tags" value="{{ new_tags_value }}" placeholder="Add new tag(s), comma-separated" style="width:100%; margin-top:.5rem;">
     </p>
     <p>
       <label>Body<br>
         <textarea name="body" rows="16" style="width:100%; font-family:inherit;">{{ body }}</textarea>
       </label>
+    </p>
+    <p>
+      <label>Attach a file (PDF, Word, Excel, etc. - optional)<br>
+        <input type="file" name="attachment">
+      </label>
+      <span class="muted">Adds a link to the uploaded file at the end of the body.</span>
     </p>
     <button type="submit">Save</button>
     {% if note_id %}

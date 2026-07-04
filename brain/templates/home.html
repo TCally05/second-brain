@@ -4,17 +4,12 @@
   {% if error %}
     <p class="error">{{ error }}</p>
   {% elif not notes %}
-    <p>No notes yet. Create one with <code>brain new "title"</code>, then run <code>brain index</code>.</p>
+    <h1>Welcome</h1>
+    <p>No notes yet. Create one with <code>brain new "title"</code> or the
+    <a href="{{ url_for('new_note') }}">New note</a> link, then run <code>brain index</code>.</p>
   {% else %}
-    <h1>All notes ({{ notes|length }})</h1>
-    <ul>
-      {% for note_id, title, tags in notes %}
-        <li>
-          <a href="{{ url_for('note_detail', note_id=note_id) }}">{{ title }}</a>
-          <span class="note-id">{{ note_id }}</span>
-          {% for tag in tags %}<span class="tag">{{ tag }}</span>{% endfor %}
-        </li>
-      {% endfor %}
-    </ul>
+    <h1>Welcome back</h1>
+    <p>{{ notes|length }} note{{ '' if notes|length == 1 else 's' }} in your vault.
+    Browse by folder in the sidebar, or search above.</p>
   {% endif %}
 {% endblock %}

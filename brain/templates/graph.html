@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Graph — Second Brain{% endblock %}
+{% block content_class %}content-graph{% endblock %}
+{% block content %}
+  <div id="graph-wrap">
+    <canvas id="graph-canvas"></canvas>
+    <div id="graph-legend">
+      <span><i style="background:#8b8b8b"></i> inbox</span>
+      <span><i style="background:#5b9bd5"></i> projects</span>
+      <span><i style="background:#70c17c"></i> areas</span>
+      <span><i style="background:#e5c07b"></i> resources</span>
+      <span><i style="background:#5c5c5c"></i> archives</span>
+    </div>
+    <p id="graph-empty" class="muted" style="display:none;"></p>
+  </div>
+  <script src="{{ url_for('static', filename='graph.js') }}"></script>
+{% endblock %}
