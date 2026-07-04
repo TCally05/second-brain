@@ -15,6 +15,7 @@ from brain.vault import iter_markdown_files
 class IndexResult:
     indexed: int
     errors: list[tuple[Path, str]] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 def slug_from_path(path: Path) -> str | None:
@@ -51,11 +52,33 @@ def build_index(vault_root: Path, db_path: Path) -> IndexResult:
             errors.append((note.path, f"duplicate id {note_id!r} (also used by {others})"))
 
     id_to_note = {note.id: note for note in notes}
-    slug_to_id: dict[str, str] = {}
+
+    # Two different notes can slugify to the same thing (e.g. two notes
+    # both titled "Meeting Notes") - unlike a shared id, that's not a hard
+    # conflict, but silently picking whichever was indexed last would mean
+    # a [[slug]]-style link points at a different note depending on
+    # filesystem walk order. Treat it as unresolved instead and warn, same
+    # as an unresolved id-style link, rather than guessing.
+    slug_to_notes: dict[str, list[Note]] = defaultdict(list)
     for note in notes:
         slug = slug_from_path(note.path)
         if slug is not None:
-            slug_to_id[slug] = note.id
+            slug_to_notes[slug].append(note)
+
+    slug_to_id: dict[str, str] = {}
+    ambiguous_slugs: set[str] = set()
+    warnings: list[str] = []
+    for slug, slug_notes in slug_to_notes.items():
+        if len(slug_notes) > 1:
+            ambiguous_slugs.add(slug)
+            others = ", ".join(str(n.path) for n in slug_notes)
+            warnings.append(
+                f"slug {slug!r} is ambiguous between {others} "
+                "- [[links]] to it will not resolve until you disambiguate "
+                "(e.g. link by id instead)"
+            )
+        else:
+            slug_to_id[slug] = slug_notes[0].id
 
     conn = connect(db_path)
     try:
@@ -77,7 +100,7 @@ def build_index(vault_root: Path, db_path: Path) -> IndexResult:
                 )
             for note in notes:
                 for target in parse_wikilinks(note.body):
-                    target_id = _resolve_target(target, id_to_note, slug_to_id)
+                    target_id = _resolve_target(target, id_to_note, slug_to_id, ambiguous_slugs)
                     conn.execute(
                         "INSERT OR IGNORE INTO links (source_id, target, target_id) "
                         "VALUES (?, ?, ?)",
@@ -86,12 +109,17 @@ def build_index(vault_root: Path, db_path: Path) -> IndexResult:
     finally:
         conn.close()
 
-    return IndexResult(indexed=len(notes), errors=errors)
+    return IndexResult(indexed=len(notes), errors=errors, warnings=warnings)
 
 
 def _resolve_target(
-    target: str, id_to_note: dict[str, Note], slug_to_id: dict[str, str]
+    target: str,
+    id_to_note: dict[str, Note],
+    slug_to_id: dict[str, str],
+    ambiguous_slugs: set[str],
 ) -> str | None:
     if ID_PATTERN.match(target) and target in id_to_note:
         return target
+    if target in ambiguous_slugs:
+        return None
     return slug_to_id.get(target)

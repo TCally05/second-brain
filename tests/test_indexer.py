@@ -108,6 +108,32 @@ def test_build_index_resolves_link_by_slug(tmp_path):
     assert row == ("202601151230", "note-b", "202601151231")
 
 
+def test_build_index_warns_on_ambiguous_slug_and_leaves_link_unresolved(tmp_path):
+    vault = make_vault(tmp_path)
+    write_note(vault, "inbox", "202601151230-meeting-notes.md", "202601151230", "Meeting notes", "First one.")
+    write_note(vault, "inbox", "202601151231-meeting-notes.md", "202601151231", "Meeting notes", "Second one.")
+    write_note(
+        vault, "inbox", "202601151232-linker.md", "202601151232", "Linker",
+        "Links to [[meeting-notes]].",
+    )
+
+    db_path = vault / ".brain" / "index.db"
+    result = build_index(vault, db_path)
+
+    assert result.errors == []
+    assert result.indexed == 3
+    assert len(result.warnings) == 1
+    assert "meeting-notes" in result.warnings[0]
+    assert "ambiguous" in result.warnings[0]
+
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        "SELECT target_id FROM links WHERE source_id = '202601151232'"
+    ).fetchone()
+    conn.close()
+    assert row == (None,)
+
+
 def test_build_index_unresolved_link_has_null_target_id(tmp_path):
     vault = make_vault(tmp_path)
     write_note(vault, "inbox", "202601151230-a.md", "202601151230", "Note A", "Links to [[nope]].")

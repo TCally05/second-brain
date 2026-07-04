@@ -142,3 +142,37 @@ Below the rule.
 
     assert "Above the rule." in note.body
     assert "Below the rule." in note.body
+
+
+def test_title_containing_triple_dash_is_not_mistaken_for_a_delimiter(tmp_path):
+    # yaml.safe_dump doesn't quote a value just because it *contains* "---"
+    # mid-string (only if the whole value looks ambiguous), so a title like
+    # this is a realistic thing create_note/update_note could write out.
+    text = """---
+id: 202601151230
+title: Foo --- Bar
+tags: [tag1]
+---
+
+Some body text.
+"""
+    note = Note.from_file(write_note(tmp_path, text))
+
+    assert note.title == "Foo --- Bar"
+    assert note.tags == ["tag1"]
+    assert note.body == "Some body text.\n"
+
+
+def test_tag_containing_triple_dash_is_not_mistaken_for_a_delimiter(tmp_path):
+    text = """---
+id: 202601151230
+title: Has a weird tag
+tags: [release---notes]
+---
+
+Some body text.
+"""
+    note = Note.from_file(write_note(tmp_path, text))
+
+    assert note.tags == ["release---notes"]
+    assert note.body == "Some body text.\n"

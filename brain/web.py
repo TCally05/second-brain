@@ -9,7 +9,7 @@ from flask import Flask, abort, redirect, render_template, request, url_for
 from brain.backlinks import get_backlinks
 from brain.capture import create_note, update_note
 from brain.indexer import build_index
-from brain.note import Note
+from brain.note import Note, NoteParseError
 from brain.orphans import get_orphans
 from brain.render import render_body
 from brain.resurface import get_resurface_candidates
@@ -28,6 +28,17 @@ def create_app(vault_root: Path) -> Flask:
             return fn(*args), None
         except sqlite3.OperationalError as exc:
             return None, f"{exc} — have you run `brain index` yet?"
+
+    def read_note(note_path: Path):
+        """Read a note straight off disk, the same live-from-source-of-truth
+        read note_detail/edit rely on. The DB only caches a note's path and
+        can go stale the moment a file is deleted, moved, or hand-edited
+        into something unparsable outside the tool - turn that into a
+        friendly message instead of a 500 with a raw traceback."""
+        try:
+            return Note.from_file(note_path), None
+        except (FileNotFoundError, NoteParseError) as exc:
+            return None, f"Couldn't read {note_path}: {exc}. Try running `brain index` to refresh the index."
 
     @app.route("/")
     def home():
@@ -78,7 +89,9 @@ def create_app(vault_root: Path) -> Flask:
         note_path = vault_root / path
 
         if request.method == "GET":
-            note = Note.from_file(note_path)
+            note, note_error = read_note(note_path)
+            if note_error:
+                return render_template("error.html", message=note_error), 500
             return render_template(
                 "note_form.html", heading=f"Edit: {db_title}", note_id=note_id,
                 title=note.title, tags=", ".join(note.tags), body=note.body, error=None,
@@ -95,6 +108,11 @@ def create_app(vault_root: Path) -> Flask:
                 "note_form.html", heading=f"Edit: {db_title}", note_id=note_id,
                 title=title, tags=tags_raw, body=body, error=str(exc),
             ), 400
+        except FileNotFoundError as exc:
+            return render_template(
+                "error.html",
+                message=f"Couldn't save {note_path}: {exc}. Try running `brain index` to refresh the index.",
+            ), 500
 
         build_index(vault_root, db_path)
         return redirect(url_for("note_detail", note_id=note_id))
@@ -108,7 +126,9 @@ def create_app(vault_root: Path) -> Flask:
             abort(404)
 
         title, path, tags_json, resolved = record
-        note = Note.from_file(vault_root / path)
+        note, note_error = read_note(vault_root / path)
+        if note_error:
+            return render_template("error.html", message=note_error), 500
         body_html = render_body(note.body, resolved)
         backlinks, _ = query(get_backlinks, db_path, note_id)
 

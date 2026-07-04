@@ -60,14 +60,23 @@ class Note:
 
 
 def _split_frontmatter(text: str, path: Path | None = None) -> tuple[dict, str]:
-    if not text.startswith("---"):
+    # The delimiter must be an entire line by itself, not just the substring
+    # "---" appearing anywhere - a title/tag value containing "---" (e.g.
+    # "Foo --- Bar") would otherwise be mistaken for the closing delimiter,
+    # silently truncating the frontmatter and corrupting the note.
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
         raise NoteParseError(f"no frontmatter found in {path}")
 
-    parts = text.split("---", 2)
-    if len(parts) < 3:
+    closing_index = next(
+        (i for i in range(1, len(lines)) if lines[i].strip() == "---"), None
+    )
+    if closing_index is None:
         raise NoteParseError(f"malformed frontmatter block in {path}")
 
-    _, raw_meta, body = parts
+    raw_meta = "\n".join(lines[1:closing_index])
+    body = "\n".join(lines[closing_index + 1 :])
+
     meta = yaml.safe_load(raw_meta) or {}
     if not isinstance(meta, dict):
         raise NoteParseError(f"frontmatter must be a YAML mapping in {path}")

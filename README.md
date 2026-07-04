@@ -48,13 +48,25 @@ $ brain index
 Indexed 42 notes.
 ```
 
-Notes that fail to parse (bad or missing id, missing title, etc.) are
-skipped and reported, and the command exits non-zero:
+Notes that fail to parse (bad or missing id, missing title, two notes
+sharing an id, etc.) are skipped and reported, and the command exits
+non-zero:
 
 ```
 $ brain index
 Indexed 41 notes.
   SKIPPED inbox/broken-note.md: missing or malformed id in inbox/broken-note.md: expected YYYYMMDDHHMM, got None
+```
+
+Two different notes that slugify to the same thing (e.g. both titled
+"Meeting Notes") don't get skipped, but any `[[slug]]`-style link to that
+slug is left unresolved rather than guessing which note you meant — link
+by id instead, or rename one of them:
+
+```
+$ brain index
+Indexed 42 notes.
+  WARNING: slug 'meeting-notes' is ambiguous between inbox/202601151230-meeting-notes.md, inbox/202601151231-meeting-notes.md - [[links]] to it will not resolve until you disambiguate (e.g. link by id instead)
 ```
 
 ### `brain search` — full-text search

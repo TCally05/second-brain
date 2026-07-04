@@ -76,7 +76,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Indexed {result.indexed} notes.")
         for path, error in result.errors:
             print(f"  SKIPPED {path}: {error}", file=sys.stderr)
-        if result.errors:
+        for warning in result.warnings:
+            print(f"  WARNING: {warning}", file=sys.stderr)
+        if result.errors or result.warnings:
             return 1
 
     elif args.command == "search":

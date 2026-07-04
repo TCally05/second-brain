@@ -80,6 +80,42 @@ def test_unknown_note_returns_404(tmp_path):
     assert resp.status_code == 404
 
 
+def test_note_detail_handles_file_deleted_after_indexing(tmp_path):
+    vault = make_vault(tmp_path)
+    note_path = write_note(vault, "202601151230", "Will vanish")
+    client = client_for(vault)
+    note_path.unlink()
+
+    resp = client.get("/notes/202601151230")
+
+    assert resp.status_code == 500
+    assert b"brain index" in resp.data
+
+
+def test_note_detail_handles_file_corrupted_after_indexing(tmp_path):
+    vault = make_vault(tmp_path)
+    note_path = write_note(vault, "202601151230", "Will be corrupted")
+    client = client_for(vault)
+    note_path.write_text("no frontmatter anymore", encoding="utf-8")
+
+    resp = client.get("/notes/202601151230")
+
+    assert resp.status_code == 500
+    assert b"brain index" in resp.data
+
+
+def test_edit_note_get_handles_file_deleted_after_indexing(tmp_path):
+    vault = make_vault(tmp_path)
+    note_path = write_note(vault, "202601151230", "Will vanish")
+    client = client_for(vault)
+    note_path.unlink()
+
+    resp = client.get("/notes/202601151230/edit")
+
+    assert resp.status_code == 500
+    assert b"brain index" in resp.data
+
+
 def test_search_returns_matching_notes(tmp_path):
     vault = make_vault(tmp_path)
     write_note(vault, "202601151230", "Zettelkasten strategy")
