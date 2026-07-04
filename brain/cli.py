@@ -9,7 +9,22 @@ from brain.backlinks import get_backlinks
 from brain.capture import create_note
 from brain.indexer import build_index
 from brain.orphans import get_orphans
+from brain.resurface import get_resurface_candidates
 from brain.search import search_notes
+
+_QUERY_FAILED = object()
+
+
+def _query_index(label: str, fn, *args):
+    """Run a read-only query against the index, turning a missing/corrupt
+    .brain/index.db into a friendly hint instead of a raw traceback. Returns
+    the sentinel _QUERY_FAILED on failure - not None, since some queries
+    (e.g. get_backlinks) use None themselves for a legitimate "not found"."""
+    try:
+        return fn(*args)
+    except sqlite3.OperationalError as exc:
+        print(f"{label} failed: {exc}. Have you run `brain index` yet?", file=sys.stderr)
+        return _QUERY_FAILED
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -33,6 +48,13 @@ def main(argv: list[str] | None = None) -> int:
         "orphans", help="show notes with no incoming or outgoing links"
     )
 
+    resurface_parser = subparsers.add_parser(
+        "resurface", help="show random notes to revisit, favoring poorly-linked ones"
+    )
+    resurface_parser.add_argument(
+        "-n", "--count", type=int, default=5, help="number of notes to show (default: 5)"
+    )
+
     args = parser.parse_args(argv)
 
     vault_root = Path.cwd()
@@ -51,13 +73,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     elif args.command == "search":
-        try:
-            results = search_notes(db_path, args.query)
-        except sqlite3.OperationalError as exc:
-            print(
-                f"Search failed: {exc}. Have you run `brain index` yet?",
-                file=sys.stderr,
-            )
+        results = _query_index("Search", search_notes, db_path, args.query)
+        if results is _QUERY_FAILED:
             return 1
 
         if not results:
@@ -67,13 +84,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    {result.snippet}")
 
     elif args.command == "backlinks":
-        try:
-            backlinks = get_backlinks(db_path, args.id)
-        except sqlite3.OperationalError as exc:
-            print(
-                f"Backlinks lookup failed: {exc}. Have you run `brain index` yet?",
-                file=sys.stderr,
-            )
+        backlinks = _query_index("Backlinks lookup", get_backlinks, db_path, args.id)
+        if backlinks is _QUERY_FAILED:
             return 1
 
         if backlinks is None:
@@ -86,19 +98,24 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{backlink.id}  {backlink.title}  ({backlink.path})")
 
     elif args.command == "orphans":
-        try:
-            orphans = get_orphans(db_path)
-        except sqlite3.OperationalError as exc:
-            print(
-                f"Orphans lookup failed: {exc}. Have you run `brain index` yet?",
-                file=sys.stderr,
-            )
+        orphans = _query_index("Orphans lookup", get_orphans, db_path)
+        if orphans is _QUERY_FAILED:
             return 1
 
         if not orphans:
             print("No orphan notes.")
         for orphan in orphans:
             print(f"{orphan.id}  {orphan.title}  ({orphan.path})")
+
+    elif args.command == "resurface":
+        notes = _query_index("Resurface", get_resurface_candidates, db_path, args.count)
+        if notes is _QUERY_FAILED:
+            return 1
+
+        if not notes:
+            print("No notes to resurface yet.")
+        for note in notes:
+            print(f"{note.id}  {note.title}  ({note.path})  [{note.link_count} links]")
 
     return 0
 
