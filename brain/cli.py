@@ -8,6 +8,7 @@ from pathlib import Path
 from brain.backlinks import get_backlinks
 from brain.capture import create_note
 from brain.indexer import build_index
+from brain.orphans import get_orphans
 from brain.search import search_notes
 
 
@@ -27,6 +28,10 @@ def main(argv: list[str] | None = None) -> int:
         "backlinks", help="show notes that link to a given note id"
     )
     backlinks_parser.add_argument("id", help="zettelkasten id (YYYYMMDDHHMM)")
+
+    subparsers.add_parser(
+        "orphans", help="show notes with no incoming or outgoing links"
+    )
 
     args = parser.parse_args(argv)
 
@@ -79,6 +84,21 @@ def main(argv: list[str] | None = None) -> int:
             print(f"No notes link to {args.id}.")
         for backlink in backlinks:
             print(f"{backlink.id}  {backlink.title}  ({backlink.path})")
+
+    elif args.command == "orphans":
+        try:
+            orphans = get_orphans(db_path)
+        except sqlite3.OperationalError as exc:
+            print(
+                f"Orphans lookup failed: {exc}. Have you run `brain index` yet?",
+                file=sys.stderr,
+            )
+            return 1
+
+        if not orphans:
+            print("No orphan notes.")
+        for orphan in orphans:
+            print(f"{orphan.id}  {orphan.title}  ({orphan.path})")
 
     return 0
 
