@@ -56,14 +56,57 @@
     return { start: openIdx + 2, query: between };
   }
 
-  function positionDropdown() {
-    // A pixel-accurate caret position inside a <textarea> needs a mirrored
-    // shadow element; skipped here for a personal single-user tool - anchoring
-    // just under the textarea is close enough without that extra machinery.
+  // A <textarea> exposes no API for "where on screen is character N" - the
+  // standard workaround (used by e.g. the textarea-caret-position library)
+  // is to mirror its text into an identically-styled hidden div and read
+  // the offset of a marker placed at that character. Rebuilt per call since
+  // the textarea's content/size changes on every keystroke.
+  const MIRRORED_STYLE_PROPS = [
+    "boxSizing", "width", "height", "overflowX", "overflowY",
+    "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
+    "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+    "fontStyle", "fontVariant", "fontWeight", "fontStretch", "fontSize",
+    "lineHeight", "fontFamily", "textAlign", "textTransform", "textIndent",
+    "letterSpacing", "wordSpacing", "tabSize",
+  ];
+
+  function caretCoordinates(position) {
+    const style = window.getComputedStyle(textarea);
+    const mirror = document.createElement("div");
+    mirror.style.position = "absolute";
+    mirror.style.visibility = "hidden";
+    mirror.style.whiteSpace = "pre-wrap";
+    mirror.style.wordWrap = "break-word";
+    mirror.style.top = "0";
+    mirror.style.left = "-9999px";
+    for (const prop of MIRRORED_STYLE_PROPS) mirror.style[prop] = style[prop];
+
+    mirror.textContent = textarea.value.slice(0, position);
+    const marker = document.createElement("span");
+    marker.textContent = textarea.value.slice(position) || ".";
+    mirror.appendChild(marker);
+    document.body.appendChild(mirror);
+
     const rect = textarea.getBoundingClientRect();
-    dropdown.style.left = rect.left + window.scrollX + "px";
-    dropdown.style.top = rect.bottom + window.scrollY + 4 + "px";
-    dropdown.style.width = Math.min(rect.width, 360) + "px";
+    const coords = {
+      left: rect.left + window.scrollX + marker.offsetLeft - textarea.scrollLeft,
+      top: rect.top + window.scrollY + marker.offsetTop - textarea.scrollTop,
+      lineHeight: marker.offsetHeight,
+    };
+    document.body.removeChild(mirror);
+    return coords;
+  }
+
+  function positionDropdown(caretPos) {
+    const coords = caretCoordinates(caretPos);
+    const width = 280;
+    let left = coords.left;
+    const maxLeft = window.scrollX + document.documentElement.clientWidth - width - 8;
+    if (left > maxLeft) left = Math.max(maxLeft, window.scrollX + 8);
+
+    dropdown.style.left = left + "px";
+    dropdown.style.top = coords.top + coords.lineHeight + 2 + "px";
+    dropdown.style.width = width + "px";
   }
 
   function renderDropdown() {
@@ -113,7 +156,7 @@
     }
 
     activeIndex = 0;
-    positionDropdown();
+    positionDropdown(textarea.selectionStart);
     renderDropdown();
     dropdown.style.display = "block";
   }
@@ -150,7 +193,7 @@
   });
 
   window.addEventListener("resize", () => {
-    if (dropdown.style.display === "block") positionDropdown();
+    if (dropdown.style.display === "block") positionDropdown(textarea.selectionStart);
   });
 
   // Ctrl/Cmd+S should save from anywhere in the form, not just the body field.
