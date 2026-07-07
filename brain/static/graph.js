@@ -22,6 +22,8 @@
 
   let nodes = [];
   let links = [];
+  let neighborIds = {}; // node id -> Set of itself + every directly linked node id, for hover highlighting
+  let hoverNode = null;
   const view = { x: 0, y: 0, scale: 1 };
   let dragNode = null;
   let panStart = null;
@@ -118,9 +120,15 @@
     ctx.translate(view.x, view.y);
     ctx.scale(view.scale, view.scale);
 
-    ctx.strokeStyle = "rgba(220, 221, 222, 0.15)";
+    // Hovering a node highlights it and its direct connections by fading
+    // everything else, so a dense graph reads as "here's this note's
+    // neighborhood" instead of a hairball.
+    const highlighted = hoverNode ? neighborIds[hoverNode.id] : null;
+
     ctx.lineWidth = 1 / view.scale;
     for (const l of links) {
+      const connected = !highlighted || (highlighted.has(l.sourceNode.id) && highlighted.has(l.targetNode.id));
+      ctx.strokeStyle = connected ? "rgba(220, 221, 222, 0.15)" : "rgba(220, 221, 222, 0.04)";
       ctx.beginPath();
       ctx.moveTo(l.sourceNode.x, l.sourceNode.y);
       ctx.lineTo(l.targetNode.x, l.targetNode.y);
@@ -128,17 +136,22 @@
     }
 
     for (const n of nodes) {
+      const dimmed = highlighted && !highlighted.has(n.id);
+      ctx.globalAlpha = dimmed ? 0.25 : 1;
       ctx.beginPath();
       ctx.fillStyle = FOLDER_COLORS[n.group] || DEFAULT_COLOR;
       ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
       ctx.fill();
 
-      if (view.scale > 0.6) {
+      // Below the normal zoom-to-show-labels threshold, still show labels
+      // for the highlighted neighborhood - that's the point of hovering.
+      if (!dimmed && (view.scale > 0.6 || highlighted)) {
         ctx.fillStyle = "#dcddde";
         ctx.font = `${12 / view.scale}px sans-serif`;
         ctx.fillText(n.title, n.x + n.r + 4, n.y + 4);
       }
     }
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 
@@ -175,6 +188,9 @@
     } else if (panStart) {
       view.x = e.clientX - panStart.x;
       view.y = e.clientY - panStart.y;
+    } else {
+      hoverNode = nodeAt(e.clientX, e.clientY);
+      canvas.style.cursor = hoverNode ? "pointer" : "grab";
     }
   });
 
@@ -246,6 +262,13 @@
       for (const l of links) {
         l.sourceNode.r += 0.6;
         l.targetNode.r += 0.6;
+      }
+
+      neighborIds = {};
+      for (const n of nodes) neighborIds[n.id] = new Set([n.id]);
+      for (const l of links) {
+        neighborIds[l.sourceNode.id].add(l.targetNode.id);
+        neighborIds[l.targetNode.id].add(l.sourceNode.id);
       }
 
       loop();
