@@ -3,7 +3,7 @@
 {% block content %}
   <h1>{{ heading }}</h1>
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
-  <form method="post" enctype="multipart/form-data">
+  <form method="post" enctype="multipart/form-data" id="note-form">
     <p>
       <label>Title<br>
         <input type="text" name="title" value="{{ title }}" style="width:100%">
@@ -25,11 +25,17 @@
       {% endif %}
       <input type="text" name="new_tags" value="{{ new_tags_value }}" placeholder="Add new tag(s), comma-separated" style="width:100%; margin-top:.5rem;">
     </p>
-    <p>
-      <label>Body<br>
-        <textarea name="body" rows="16" style="width:100%; font-family:inherit;">{{ body }}</textarea>
-      </label>
+    <p class="editor-hint muted">
+      Type <code>[[</code> to link a note &middot; Ctrl/Cmd+S to save
     </p>
+    <div class="editor-grid">
+      <div class="editor-pane">
+        <textarea id="body-field" name="body" rows="16">{{ body }}</textarea>
+      </div>
+      <div class="preview-pane">
+        <div class="note-body" id="live-preview"></div>
+      </div>
+    </div>
     <p>
       <label>Attach a file (PDF, Word, Excel, etc. - optional)<br>
         <input type="file" name="attachment">
@@ -43,4 +49,6 @@
       <a href="{{ url_for('home') }}">Cancel</a>
     {% endif %}
   </form>
+  <script type="application/json" id="notes-data">{{ all_notes | tojson }}</script>
+  <script src="{{ url_for('static', filename='editor.js') }}"></script>
 {% endblock %}

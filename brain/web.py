@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections import defaultdict
 from pathlib import Path
 from urllib.parse import quote
 
@@ -10,8 +11,9 @@ from werkzeug.utils import secure_filename
 
 from brain.backlinks import get_backlinks
 from brain.capture import create_note, update_note
-from brain.indexer import build_index
-from brain.note import Note, NoteParseError
+from brain.indexer import build_index, slug_from_path
+from brain.links import parse_wikilinks
+from brain.note import ID_PATTERN, Note, NoteParseError
 from brain.orphans import get_orphans
 from brain.render import render_body
 from brain.resurface import get_resurface_candidates
@@ -73,12 +75,15 @@ def create_app(vault_root: Path) -> Flask:
     @app.route("/notes/new", methods=["GET", "POST"])
     def new_note():
         all_tags, _ = query(_list_all_tags, db_path)
+        all_notes, _ = get_all_notes()
+        all_notes = _notes_for_autocomplete(all_notes or [])
 
         if request.method == "GET":
             return render_template(
                 "note_form.html", heading="New note", note_id=None,
                 title="", body="", error=None,
                 all_tags=all_tags or [], selected_tags=[], new_tags_value="",
+                all_notes=all_notes,
             )
 
         title = request.form.get("title", "")
@@ -93,6 +98,7 @@ def create_app(vault_root: Path) -> Flask:
                 title=title, body=body, error=str(exc),
                 all_tags=all_tags or [], selected_tags=request.form.getlist("tags"),
                 new_tags_value=request.form.get("new_tags", ""),
+                all_notes=all_notes,
             ), 400
 
         new_id = note_path.stem.split("-", 1)[0]
@@ -117,6 +123,8 @@ def create_app(vault_root: Path) -> Flask:
         db_title, path, _tags_json, _resolved = record
         note_path = vault_root / path
         all_tags, _ = query(_list_all_tags, db_path)
+        all_notes, _ = get_all_notes()
+        all_notes = _notes_for_autocomplete(all_notes or [])
 
         if request.method == "GET":
             note, note_error = read_note(note_path)
@@ -126,6 +134,7 @@ def create_app(vault_root: Path) -> Flask:
                 "note_form.html", heading=f"Edit: {db_title}", note_id=note_id,
                 title=note.title, body=note.body, error=None,
                 all_tags=all_tags or [], selected_tags=note.tags, new_tags_value="",
+                all_notes=all_notes,
             )
 
         title = request.form.get("title", "")
@@ -144,6 +153,7 @@ def create_app(vault_root: Path) -> Flask:
                 title=title, body=body, error=str(exc),
                 all_tags=all_tags or [], selected_tags=request.form.getlist("tags"),
                 new_tags_value=request.form.get("new_tags", ""),
+                all_notes=all_notes,
             ), 400
         except FileNotFoundError as exc:
             return render_template(
@@ -178,6 +188,18 @@ def create_app(vault_root: Path) -> Flask:
             body_html=body_html,
             backlinks=backlinks or [],
         )
+
+    @app.route("/preview", methods=["POST"])
+    def preview():
+        """Render a live preview of an in-progress edit. Takes body text
+        straight from the editor (not yet saved to disk) and resolves its
+        [[wikilinks]] against the notes already in the index, so a link to
+        an existing note shows as a real link before you ever hit Save -
+        the same resolution rules `brain index` applies, just run against
+        whatever's currently indexed rather than a fresh vault scan."""
+        body = request.form.get("body", "")
+        resolved, _error = query(_resolve_links_against_index, db_path, body)
+        return render_body(body, resolved or {})
 
     @app.route("/attachments/<path:filename>")
     def attachment(filename):
@@ -259,6 +281,38 @@ def _collect_tags(form) -> list[str]:
             seen.add(t)
             result.append(t)
     return result
+
+
+def _notes_for_autocomplete(notes: list[tuple[str, str, list[str], str]]) -> list[dict[str, str]]:
+    """Trim the full note-list tuples down to just what the [[wikilink
+    autocomplete JS needs (id + title), so the JSON embedded in the edit
+    page doesn't carry tags/paths it has no use for."""
+    return [{"id": note_id, "title": title} for note_id, title, _tags, _path in notes]
+
+
+def _resolve_links_against_index(db_path: Path, body: str) -> dict[str, str | None]:
+    """Resolve each [[wikilink]] target in `body` the same way build_index
+    would (an id match, else an unambiguous slug match), but against notes
+    already in the index rather than re-scanning the vault from disk - good
+    enough for a live preview of unsaved text, and much cheaper per keystroke."""
+    notes = _list_notes(db_path)
+    id_set = {note_id for note_id, _title, _tags, _path in notes}
+
+    slug_to_ids: dict[str, list[str]] = defaultdict(list)
+    for note_id, _title, _tags, path in notes:
+        slug = slug_from_path(Path(path))
+        if slug is not None:
+            slug_to_ids[slug].append(note_id)
+
+    resolved: dict[str, str | None] = {}
+    for target in parse_wikilinks(body):
+        if ID_PATTERN.match(target) and target in id_set:
+            resolved[target] = target
+        elif len(slug_to_ids.get(target, [])) == 1:
+            resolved[target] = slug_to_ids[target][0]
+        else:
+            resolved[target] = None
+    return resolved
 
 
 def _list_all_tags(db_path: Path) -> list[str]:

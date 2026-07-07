@@ -485,6 +485,62 @@ def test_edit_note_get_checks_the_notes_current_tags(tmp_path):
     assert b'value="beta" checked' in resp.data
 
 
+def test_preview_resolves_wikilink_to_existing_note(tmp_path):
+    vault = make_vault(tmp_path)
+    write_note(vault, "202601151230", "Target note")
+    client = client_for(vault)
+
+    resp = client.post("/preview", data={"body": "See [[202601151230]]."})
+
+    assert resp.status_code == 200
+    assert b'href="/notes/202601151230"' in resp.data
+
+
+def test_preview_marks_unresolved_link_as_dangling(tmp_path):
+    vault = make_vault(tmp_path)
+    client = client_for(vault)
+
+    resp = client.post("/preview", data={"body": "See [[doesnotexist]]."})
+
+    assert resp.status_code == 200
+    assert b"dangling-link" in resp.data
+
+
+def test_preview_resolves_link_by_slug(tmp_path):
+    vault = make_vault(tmp_path)
+    write_note(vault, "202601151230", "Target note")
+    client = client_for(vault)
+
+    resp = client.post("/preview", data={"body": "See [[target-note]]."})
+
+    assert resp.status_code == 200
+    assert b'href="/notes/202601151230"' in resp.data
+
+
+def test_preview_without_index_falls_back_to_unresolved_instead_of_erroring(tmp_path):
+    vault = make_vault(tmp_path)
+    app = create_app(vault)
+    app.testing = True
+
+    resp = app.test_client().post("/preview", data={"body": "See [[somewhere]]."})
+
+    assert resp.status_code == 200
+    assert b"dangling-link" in resp.data
+
+
+def test_new_note_form_includes_notes_data_and_editor_script(tmp_path):
+    vault = make_vault(tmp_path)
+    write_note(vault, "202601151230", "Existing note")
+    client = client_for(vault)
+
+    resp = client.get("/notes/new")
+
+    assert resp.status_code == 200
+    assert b"notes-data" in resp.data
+    assert b"Existing note" in resp.data
+    assert b"editor.js" in resp.data
+
+
 def test_edit_note_can_uncheck_a_tag_to_remove_it(tmp_path):
     vault = make_vault(tmp_path)
     write_note(vault, "202601151230", "Has tags", "")
